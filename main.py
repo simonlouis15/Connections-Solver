@@ -158,54 +158,6 @@ class Group:
 
 
 #--------------------------------------------------HELPER FUNCTIONS----------------------------------------------------------------------------------------------------------------------
-
-variances = []
-def get_even_clusters(X, cluster_size, num_clusters):
-
-    kmeans = KMeansConstrained(num_clusters, n_init=20, random_state=0)
-    kmeans.fit(X) #assign each word vector to one of 4 clusters
-
-    centers = kmeans.cluster_centers_ #find the centroid of each cluster
-    centers = centers.reshape(-1, 1, X.shape[-1]).repeat(cluster_size, 1).reshape(-1, X.shape[-1]) 
-    distance_matrix = cdist(X, centers)
-
-    clusters = linear_sum_assignment(distance_matrix)[1]//cluster_size
-
-    # Compute within-cluster variance
-    for cluster_num in range(num_clusters):
-        cluster_points = X[clusters == cluster_num]
-        distances = cdist(cluster_points, [centers[cluster_num]], 'euclidean')
-
-        pairwise_distances = squareform(pdist(cluster_points))
-
-        np.fill_diagonal(pairwise_distances, np.inf)
-
-        # Find the distance to the closest point for each point in the cluster
-        min_distances = np.min(pairwise_distances, axis=1)
-
-        # Find the index of the point with the maximum of these closest distances
-        farthest_point_index = np.argmax(min_distances)
-        farthest_point = cluster_points[farthest_point_index]
-
-        #new_data_set = X.remove(farthest_point)
-                
-        variance = np.var(distances)
-        variances.append(variance)
-
-    # Print variances for each cluster
-    for i, variance in enumerate(variances):
-        print(f"Cluster {i+1} Within-Cluster Variance: {variance:.3f}")
-    
-    return clusters
-
-def get_best_group(X, num_clusters=1):
-    kmeans = KMeans(num_clusters, n_init=20, random_state=0).fit(X) #assign each word vector to one of 4 clusters
-
-    distances = kmeans.transform(X).flatten()
-    closest_indices = np.argsort(distances)[:4]
-    
-    return closest_indices
-
 def find_suffix():
     vocab = model.key_to_index
 
@@ -327,114 +279,6 @@ def find_suffix():
 
 
 #-----------------------------------------------GROUP INTO CLUSTERS---------------------------------------------------------------------------------------------------------------------------
-def solver():
-    word_vectors = []
-    for word in words_list:
-        word_vectors.append(model[word])
-
-    word_vectors_2d = np.array(word_vectors)
-    
-    num_clusters= math.ceil((len(words_list) / 4))
-    balanced_clusters = get_even_clusters(word_vectors_2d, 4, num_clusters)
-    print(f"best bet is group: {variances.index(min(variances)) + 1}")
-
-
-    grouped_words = [[] for elem in range (4)] #creates 4 empty lists
-    for i, label in enumerate(balanced_clusters): #for each word in the cluster (label is between 0-3)
-        grouped_words[label].append(words_list[i]) #add the word to the list of words in the cluster
-
-    print(grouped_words)
-    return grouped_words
-
-wrong_combinations = []
-def error_handling(grouped_words):
-    error_count = 0
-    best_group = grouped_words[variances.index(min(variances))]
-    best_group.sort()
-    print("original: ", best_group)
-
-    for answer in answer_key:
-        answer.sort()
-        print(answer)
-
-    while 1:
-        if best_group in answer_key: #im not sure if order matters (prob does)
-            print("we got it right: ", best_group)
-            variances.clear()
-            grouped_words.clear()
-            for word in best_group:
-                words_list.remove(word)
-            grouped_words = solver()
-            best_group = grouped_words[variances.index(min(variances))].sort()
-        else:
-            print("mistake!")
-            error_count += 1
-            if error_count == 4:
-                break
-            grouped_words.remove(grouped_words[variances.index(min(variances))])
-            variances.remove(min(variances))
-            best_group = grouped_words[variances.index(min(variances))]
-            best_group.sort()
-            print("new: ", best_group)
-
-
-
-#indices = get_best_group(words_list)
-#print([words_list[index] for index in indices])
-
-def group_by_context():
-    # Calculate the aggregate similarity for each combination
-    best_similarity = -1
-    best_combination = None
-
-    for group in combinations(words_list, 4):
-
-        
-        word_vectors = []
-        for word in group:
-            word_vectors.append(model[word])
-        
-        word_vectors_2d = np.array(word_vectors)
-
-        # Calculate pairwise similarities
-        pairwise_similarities = [
-            cosine_similarity([word_vectors_2d[i]], [word_vectors_2d[j]])[0][0]
-            for i in range(4) for j in range(i + 1, 4)
-        ]
-    
-        # Aggregate similarity (e.g., by averaging)
-        avg_similarity = np.mean(pairwise_similarities)
-
-        
-        # Track the best combination
-        if avg_similarity > best_similarity:
-            best_similarity = avg_similarity
-            best_combination = group
-            print(best_combination, ": ", best_similarity)
-            
-
-    return best_similarity
-
-
-
-
-"""
-def check_overlap():
-    grouped_words = solver()
-
-    for group in grouped_words:
-        group.sort()
-
-    best_group = find_strongest_group(words_list).sort()
-
-    for group in grouped_words:
-        intersection = best_group & group
-
-        if len(intersection) == 3: #three word match (pretty close)
-            #here we remove word with lowest cosine similarity to the rest of the words
-            # and replace it with the different word from the intersected group
-"""
-
 #error_handling(grouped_words)
 def starts_with_year(line):
     match = re.match(r"^\d{4}\b", line)
@@ -680,37 +524,6 @@ def combinations_grouper():
         score, matrix = compute_confidence(group)
         print(group, ": ", score)
 
-def find_wrong_word(group):
-
-    best_score, matrix = compute_confidence(group)
-    word_score = [0, 0, 0, 0]
-    for word_info in matrix:
-        if word_info[0] == group[0] or word_info[1] == group[0]:
-            score = compare_definitions(word_info[2], word_info[3])
-            #print(word_info[0], "and ", word_info[1], " have a score of: ", score)
-            word_score[0] += score
-
-        if word_info[0] == group[1] or word_info[1] == group[1]:
-            score = compare_definitions(word_info[2], word_info[3])
-            #print(word_info[0], "and ", word_info[1], " have a score of: ", score)
-            word_score[1] += score
-
-        if word_info[0] == group[2] or word_info[1] == group[2]:
-            score = compare_definitions(word_info[2], word_info[3])
-            #print(word_info[0], "and ", word_info[1], " have a score of: ", score)
-            word_score[2] += score
-
-        if word_info[0] == group[3] or word_info[1] == group[3]:
-            score = compare_definitions(word_info[2], word_info[3])
-            #print(word_info[0], "and ", word_info[1], " have a score of: ", score)
-            word_score[3] += score
-
-    sucky_word = group[word_score.index(min(word_score))]
-
-    print("the sucky word is: ", sucky_word)
-
-#find_wrong_word(['buff', 'cream', 'fawn', 'tan'])
-
 def homophones():
     df = pd.read_csv("The-Big-List-of-Homophones.csv", usecols=['1', '2', '3', '4', '5', '6'], encoding='latin-1')
     df_flat = df.values.flatten()
@@ -738,73 +551,9 @@ def homophones():
 
     return best_group
       
-
-#combinations_grouper()
+#UNCOMMENT TO TRY OUT THE SOLVER
 #find_strongest_group(words_list)
-#group_by_context()
-
 #print(find_suffix())
-#grouped_words = solver()
-
-#score, matrix = compute_confidence(['job', 'position', 'post', 'station'])
-#print(score)
-
-#phrases = [phrase for phrase in model.index_to_key if 'head' in phrase.lower()]
-#print(f"\n\n {phrases}")
-
-
-"""
-score, matrix = compute_confidence(['brush', 'cape', 'clippers', 'gel',])
-score1, matrix = compute_confidence(['fire', 'heat', 'kick', 'spice',])
-score2, matrix = compute_confidence(['tarot', 'set', 'magic', 'baseball'])
-print(score)
-print(score1)
-print(score2)
-avg = (score + score1 + score2) / 3
-print(avg)
-
-best1, bs1 = find_strongest_group(words_list)
-for word in best1:
-    if word in words_list:
-        words_list.remove(word)
-
-definition_dict = get_definitions(words_list)
-
-best2, bs2 = find_strongest_group(words_list)
-for word in best2:
-    if word in words_list:
-        words_list.remove(word)
-definition_dict = get_definitions(words_list)
-
-best3, bs3 = find_strongest_group(words_list)
-
-best_avg = (bs1 + bs2 + bs3) / 3
-print(best_avg)
-"""
-
-
-
-
-for word in ['blowout', 'blow_out', 'blow-out']:
-    print("the definitions of ", word, " are: ")
-
-    #definitions = get_word_info(word)
-    #if len(definitions) < 2:
-    definitions = wordnet_definitions(word)
-
-    for i, defin in enumerate(definitions):
-        print("definition ", i, ": ", defin)
-    print("\n")
-
-
-#print(get_word_data("office"))
-
-
-
-#print(get_word_data('cream'))
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
 #print(homophones())
 
 
